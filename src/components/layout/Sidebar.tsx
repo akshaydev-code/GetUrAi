@@ -388,7 +388,7 @@ const Sidebar = () => {
         )}
       </div>
 
-      <p className="mb-18 mx-auto">Made By Akshay G with 🖤💛</p>
+      <p className="mb-6 mx-auto">Made By Akshay G with 🖤💛</p>
     </aside>
   );
 };

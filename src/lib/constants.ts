@@ -1,4 +1,4 @@
-export const APP_NAME = "OpenChat AI";
+export const APP_NAME = "GetUrAi";
 
 export const APP_DESCRIPTION =
   "A modern AI powered chat application";

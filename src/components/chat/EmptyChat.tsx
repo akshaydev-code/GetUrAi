@@ -18,7 +18,7 @@ const EmptyChat = () => {
 
 
       <h1 className="text-3xl font-bold mb-3">
-        Welcome to OpenChat AI
+        Welcome to GetUrAi
       </h1>
 
 
