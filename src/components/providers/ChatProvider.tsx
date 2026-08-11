@@ -957,10 +957,20 @@ interface ChatContextType {
     id: string
   ) => void;
 
+  renameConversation: (
+    id: string,
+    title: string
+  ) => void;
+
   stopGenerating: () => void;
 
   regenerateMessage: (
     messageId: string
+  ) => Promise<void>;
+
+  editMessage: (
+    messageId: string,
+    newContent: string
   ) => Promise<void>;
 
   setIsLoading: (
@@ -1402,12 +1412,12 @@ export const ChatProvider = ({
         "Regenerating response..."
       );
 
-      const stream =
-        await sendMessageToAI(
-          conversationMessages,
-          controller.signal,
-          0.95
-        );
+      const stream = await sendMessageToAI(
+        conversationMessages,
+        controller.signal,
+        0.95,
+        true
+      );
 
       const reader =
         stream.getReader();
@@ -1522,6 +1532,145 @@ export const ChatProvider = ({
     }
   };
 
+  const editMessage = async (
+    messageId: string,
+    newContent: string
+  ) => {
+    if (isLoading) return;
+
+    const trimmedContent = newContent.trim();
+
+    if (!trimmedContent) return;
+
+    const messageIndex = messages.findIndex(
+      (message) => message.id === messageId
+    );
+
+    if (messageIndex === -1) return;
+
+    const targetMessage = messages[messageIndex];
+
+    if (targetMessage.role !== "user") {
+      return;
+    }
+
+    // Edited user message
+    const editedMessage: ChatMessage = {
+      ...targetMessage,
+      content: trimmedContent,
+      createdAt: new Date(),
+    };
+
+    // Old message ke baad ki purani conversation remove
+    const conversationMessages = [
+      ...messages.slice(0, messageIndex),
+      editedMessage,
+    ];
+
+    setMessages(conversationMessages);
+
+    updateConversation(conversationMessages);
+
+    const controller = new AbortController();
+
+    abortControllerRef.current = controller;
+
+    setIsLoading(true);
+
+    try {
+      const stream = await sendMessageToAI(
+        conversationMessages,
+        controller.signal
+      );
+
+      const reader = stream.getReader();
+
+      const decoder = new TextDecoder();
+
+      const aiMessageId = crypto.randomUUID();
+
+      let aiContent = "";
+
+      const aiMessage: ChatMessage = {
+        id: aiMessageId,
+        role: "assistant",
+        content: "",
+        createdAt: new Date(),
+      };
+
+      setMessages((prev) => [
+        ...prev,
+        aiMessage,
+      ]);
+
+      while (true) {
+        const {
+          value,
+          done,
+        } = await reader.read();
+
+        if (done) break;
+
+        const chunk = decoder.decode(value, {
+          stream: true,
+        });
+
+        if (!chunk) continue;
+
+        aiContent += chunk;
+
+        const updatedMessages = [
+          ...conversationMessages,
+          {
+            ...aiMessage,
+            content: aiContent,
+          },
+        ];
+
+        setMessages(updatedMessages);
+
+        updateConversation(
+          updatedMessages
+        );
+      }
+
+      const finalChunk = decoder.decode();
+
+      if (finalChunk) {
+        aiContent += finalChunk;
+      }
+
+      const finalAIMessage: ChatMessage = {
+        ...aiMessage,
+        content: aiContent,
+      };
+
+      const finalMessages = [
+        ...conversationMessages,
+        finalAIMessage,
+      ];
+
+      setMessages(finalMessages);
+
+      updateConversation(finalMessages);
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "AbortError"
+      ) {
+        console.log("Edit generation stopped");
+      } else {
+        console.error(
+          "Failed to edit message:",
+          error
+        );
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  };
+
   const addAIMessage = (
     content: string
   ) => {
@@ -1604,6 +1753,30 @@ export const ChatProvider = ({
     }
   };
 
+  const renameConversation = (
+    id: string,
+    title: string
+  ) => {
+    const trimmedTitle = title.trim();
+
+    if (!trimmedTitle) return;
+
+    const updated = conversations.map(
+      (conversation) =>
+        conversation.id === id
+          ? {
+            ...conversation,
+            title: trimmedTitle.slice(0, 60),
+            updatedAt:
+              new Date().toISOString(),
+          }
+          : conversation
+    );
+
+    setConversations(updated);
+    saveConversations(updated);
+  };
+
   const clearChat = () => {
     setMessages([]);
   };
@@ -1631,9 +1804,13 @@ export const ChatProvider = ({
 
         deleteConversation,
 
+        renameConversation,
+
         stopGenerating,
 
         regenerateMessage,
+
+        editMessage,
 
         setIsLoading,
       }}

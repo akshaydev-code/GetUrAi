@@ -140,7 +140,13 @@ import {
   MessageSquare,
   Plus,
   Trash2,
+  MoreHorizontal,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
+
+import { useState } from "react";
 
 import Button from "@/components/ui/Button";
 import { useChat } from "@/hooks/useChat";
@@ -152,8 +158,15 @@ const Sidebar = () => {
     createNewChat,
     selectConversation,
     deleteConversation,
+    renameConversation,
     isLoading,
   } = useChat();
+
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
+
+  const [editTitle, setEditTitle] =
+    useState("");
 
   return (
     <aside
@@ -229,73 +242,147 @@ const Sidebar = () => {
               <div
                 key={chat.id}
                 className={`
-                  group
-                  flex
-                  items-center
-                  gap-2
-                  rounded-xl
-                  transition
-                  ${
-                    chat.id ===
-                    conversationId
-                      ? "bg-accent"
-                      : "hover:bg-accent"
+    group
+    flex
+    items-center
+    gap-1
+    rounded-xl
+    transition
+    ${chat.id === conversationId
+                    ? "bg-accent"
+                    : "hover:bg-accent"
                   }
-                `}
+  `}
               >
-                <button
-                  onClick={() =>
-                    selectConversation(
-                      chat.id
-                    )
-                  }
-                  disabled={isLoading}
-                  className="
-                    flex
-                    flex-1
-                    min-w-0
-                    items-center
-                    gap-3
-                    p-3
-                    text-left
-                  "
-                >
-                  <MessageSquare
-                    size={18}
-                    className="shrink-0"
-                  />
+                {editingId === chat.id ? (
+                  <>
+                    <input
+                      value={editTitle}
+                      onChange={(e) =>
+                        setEditTitle(e.target.value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          renameConversation(
+                            chat.id,
+                            editTitle
+                          );
 
-                  <span
-                    className="
-                      truncate
-                      text-sm
-                    "
-                  >
-                    {chat.title}
-                  </span>
-                </button>
+                          setEditingId(null);
+                        }
 
-                <button
-                  onClick={() =>
-                    deleteConversation(
-                      chat.id
-                    )
-                  }
-                  disabled={isLoading}
-                  className="
-                    mr-2
-                    rounded-lg
-                    p-2
-                    opacity-0
-                    transition
-                    group-hover:opacity-100
-                    hover:bg-destructive/10
-                    hover:text-destructive
-                  "
-                  aria-label="Delete chat"
-                >
-                  <Trash2 size={16} />
-                </button>
+                        if (e.key === "Escape") {
+                          setEditingId(null);
+                        }
+                      }}
+                      autoFocus
+                      className="
+          min-w-0
+          flex-1
+          rounded-lg
+          border
+          bg-background
+          px-2
+          py-2
+          text-sm
+          outline-none
+        "
+                    />
+
+                    <button
+                      onClick={() => {
+                        renameConversation(
+                          chat.id,
+                          editTitle
+                        );
+
+                        setEditingId(null);
+                      }}
+                      className="rounded-lg p-2 hover:bg-accent"
+                    >
+                      <Check size={15} />
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setEditingId(null)
+                      }
+                      className="rounded-lg p-2 hover:bg-accent"
+                    >
+                      <X size={15} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() =>
+                        selectConversation(chat.id)
+                      }
+                      disabled={isLoading}
+                      className="
+          flex
+          min-w-0
+          flex-1
+          items-center
+          gap-3
+          p-3
+          text-left
+        "
+                    >
+                      <MessageSquare
+                        size={18}
+                        className="shrink-0"
+                      />
+
+                      <span className="truncate text-sm">
+                        {chat.title}
+                      </span>
+                    </button>
+
+                    <div
+                      className="
+          mr-1
+          flex
+          items-center
+          opacity-0
+          transition
+          group-hover:opacity-100
+        "
+                    >
+                      <button
+                        onClick={() => {
+                          setEditingId(chat.id);
+                          setEditTitle(chat.title);
+                        }}
+                        disabled={isLoading}
+                        className="
+            rounded-lg
+            p-2
+            hover:bg-accent
+          "
+                        aria-label="Rename chat"
+                      >
+                        <Pencil size={15} />
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          deleteConversation(chat.id)
+                        }
+                        disabled={isLoading}
+                        className="
+            rounded-lg
+            p-2
+            hover:bg-destructive/10
+            hover:text-destructive
+          "
+                        aria-label="Delete chat"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))
         )}

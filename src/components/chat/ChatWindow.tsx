@@ -79,19 +79,55 @@ import MessageBubble from "./MessageBubble";
 import { useChat } from "@/hooks/useChat";
 
 const ChatWindow = () => {
-  const { messages } = useChat();
+  const { messages, isLoading } = useChat();
 
-  const bottomRef =
+  const containerRef =
     useRef<HTMLDivElement>(null);
 
+  const previousMessageCount =
+    useRef(messages.length);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages]);
+    const container =
+      containerRef.current;
+
+    if (!container) return;
+
+    const isNewMessage =
+      messages.length >
+      previousMessageCount.current;
+
+    previousMessageCount.current =
+      messages.length;
+
+    // New user/AI message aaya
+    if (isNewMessage) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+
+      return;
+    }
+
+    // AI streaming ke time
+    // direct bottom par rakho
+    if (isLoading) {
+      container.scrollTop =
+        container.scrollHeight;
+    }
+  }, [messages, isLoading]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-5">
+    <div
+      ref={containerRef}
+      className="
+        flex-1
+        overflow-y-auto
+        px-6
+        py-5
+      "
+    >
       {messages.length === 0 ? (
         <EmptyChat />
       ) : (
@@ -104,8 +140,6 @@ const ChatWindow = () => {
               content={message.content}
             />
           ))}
-
-          <div ref={bottomRef} />
         </div>
       )}
     </div>

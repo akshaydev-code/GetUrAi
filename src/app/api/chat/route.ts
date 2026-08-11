@@ -145,26 +145,13 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const SYSTEM_PROMPT = `
-You are OpenChatAI, a helpful, intelligent, and friendly AI assistant.
-
-Your behavior:
-- Give accurate and useful answers.
-- Understand the conversation context before answering.
-- Do not repeat the same answer unnecessarily.
-- If the user asks a follow-up question, use previous messages for context.
-- Keep simple answers concise.
-- Give detailed explanations when the question requires them.
-- Use Markdown when it improves readability.
-- Use headings, bullet points, numbered lists, and code blocks when appropriate.
-- For programming questions, provide clean and practical code.
-- If you are unsure about something, clearly say so instead of making up information.
-- Be conversational and natural.
-`;
-
 export async function POST(request: Request) {
   try {
-    const { messages } = await request.json();
+    const {
+      messages,
+      temperature = 0.7,
+      isRegeneration = false,
+    } = await request.json();
 
     if (!messages || !Array.isArray(messages)) {
       return new Response("Messages are required", {
@@ -172,61 +159,76 @@ export async function POST(request: Request) {
       });
     }
 
-    const stream = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+    const safeTemperature = Math.min(
+      Math.max(Number(temperature) || 0.7, 0),
+      1.5
+    );
 
-      messages: [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT,
-        },
-        ...messages,
-      ],
+    const finalMessages = isRegeneration
+      ? [
+          {
+            role: "system" as const,
+            content:
+              "You are regenerating an answer. Give a substantially different response from the previous answer. Do not simply repeat or rephrase the same response. Use a different approach, structure, wording, examples, or perspective whenever possible. Still answer the user's original request accurately and directly.",
+          },
+          ...messages,
+        ]
+      : messages;
 
-      stream: true,
+    const stream =
+      await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
 
-      temperature: 0.7,
-    });
+        messages: finalMessages,
+
+        stream: true,
+
+        temperature: safeTemperature,
+      });
 
     const encoder = new TextEncoder();
 
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of stream) {
-            const content =
-              chunk.choices[0]?.delta?.content;
+    const readableStream =
+      new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of stream) {
+              const content =
+                chunk.choices[0]?.delta?.content;
 
-            if (content) {
-              controller.enqueue(
-                encoder.encode(content)
-              );
+              if (content) {
+                controller.enqueue(
+                  encoder.encode(content)
+                );
+              }
             }
+
+            controller.close();
+          } catch (error) {
+            console.error(
+              "Streaming error:",
+              error
+            );
+
+            controller.error(error);
           }
+        },
+      });
 
-          controller.close();
-        } catch (error) {
-          console.error(
-            "Streaming error:",
-            error
-          );
+    return new Response(
+      readableStream,
+      {
+        headers: {
+          "Content-Type":
+            "text/plain; charset=utf-8",
 
-          controller.error(error);
-        }
-      },
-    });
+          "Cache-Control":
+            "no-cache",
 
-    return new Response(readableStream, {
-      headers: {
-        "Content-Type":
-          "text/plain; charset=utf-8",
-
-        "Cache-Control":
-          "no-cache",
-
-        Connection: "keep-alive",
-      },
-    });
+          Connection: "keep-alive",
+        },
+      }
+    );
   } catch (error) {
     console.error(
       "Chat API Error:",

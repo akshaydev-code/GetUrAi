@@ -155,7 +155,8 @@ import { ChatMessage } from "@/types/chat";
 export async function sendMessageToAI(
   messages: ChatMessage[],
   signal?: AbortSignal,
-  temperature = 0.7
+  temperature = 0.7,
+  isRegeneration = false
 ): Promise<ReadableStream<Uint8Array>> {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -173,6 +174,8 @@ export async function sendMessageToAI(
       })),
 
       temperature,
+
+      isRegeneration,
     }),
   });
 
