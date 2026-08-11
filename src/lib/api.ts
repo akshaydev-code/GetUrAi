@@ -1,18 +1,67 @@
-import { ChatMessage } from "@/types/chat";
+// import { ChatMessage } from "@/types/chat";
 
+
+// interface SendMessageResponse {
+//   message: ChatMessage;
+// }
+
+
+// export async function sendMessageToAI(
+//   content: string
+// ): Promise<SendMessageResponse> {
+
+
+//   const response = await fetch("/api/chat", {
+
+//     method: "POST",
+
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+
+//     body: JSON.stringify({
+//       message: content,
+//     }),
+
+//   });
+
+
+
+//   if (!response.ok) {
+
+//     const error =
+//       await response.json();
+
+//     console.log(error);
+
+//     throw new Error(
+//       "Failed to send message"
+//     );
+
+//   }
+
+
+
+//   return response.json();
+
+// }
+
+
+
+
+
+
+
+import { ChatMessage } from "@/types/chat";
 
 interface SendMessageResponse {
   message: ChatMessage;
 }
 
-
 export async function sendMessageToAI(
-  content: string
-): Promise<SendMessageResponse> {
-
-
+  messages: ChatMessage[]
+): Promise<ReadableStream<Uint8Array>> {
   const response = await fetch("/api/chat", {
-
     method: "POST",
 
     headers: {
@@ -20,28 +69,24 @@ export async function sendMessageToAI(
     },
 
     body: JSON.stringify({
-      message: content,
+      messages: messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
     }),
-
   });
 
-
-
   if (!response.ok) {
+    const errorText = await response.text();
 
-    const error =
-      await response.json();
+    console.error("Chat API Error:", errorText);
 
-    console.log(error);
-
-    throw new Error(
-      "Failed to send message"
-    );
-
+    throw new Error("Failed to send message");
   }
 
+  if (!response.body) {
+    throw new Error("No response body received");
+  }
 
-
-  return response.json();
-
+  return response.body;
 }

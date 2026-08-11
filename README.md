@@ -117,6 +117,12 @@ git clone <repository-url>
 cd OpenChatAI
 ```
 
+## env file
+
+```env
+GROQ_API_KEY=your key
+```
+
 ## Install Dependencies
 
 ```bash
