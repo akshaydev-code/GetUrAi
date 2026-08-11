@@ -913,6 +913,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -1030,62 +1031,110 @@ const saveConversations = (
   );
 };
 
+
+const STREAM_UPDATE_INTERVAL = 45;
+
+const streamAIResponse = async ({
+  stream,
+  onUpdate,
+}: {
+  stream: ReadableStream<Uint8Array>;
+  onUpdate: (content: string) => void;
+}) => {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+
+  let content = "";
+  let pending = "";
+  let lastUpdate = Date.now();
+
+  while (true) {
+    const { value, done } = await reader.read();
+
+    if (done) break;
+
+    const chunk = decoder.decode(value, {
+      stream: true,
+    });
+
+    if (!chunk) continue;
+
+    pending += chunk;
+
+    const now = Date.now();
+
+    if (
+      now - lastUpdate >=
+      STREAM_UPDATE_INTERVAL
+    ) {
+      content += pending;
+      pending = "";
+
+      onUpdate(content);
+
+      lastUpdate = now;
+    }
+  }
+
+  pending += decoder.decode();
+
+  if (pending) {
+    content += pending;
+    onUpdate(content);
+  }
+
+  return content;
+};
+
 export const ChatProvider = ({
   children,
 }: {
   children: React.ReactNode;
 }) => {
   const [conversations, setConversations] =
-    useState<Conversation[]>(
-      getStoredConversations
-    );
+    useState<Conversation[]>([]);
 
   const [conversationId, setConversationId] =
-    useState<string>(() => {
-      const stored =
-        getStoredConversations();
-
-      if (stored.length > 0) {
-        const sorted = [...stored].sort(
-          (a, b) =>
-            new Date(
-              b.updatedAt
-            ).getTime() -
-            new Date(
-              a.updatedAt
-            ).getTime()
-        );
-
-        return sorted[0].id;
-      }
-
-      return crypto.randomUUID();
-    });
+    useState<string>(() =>
+      crypto.randomUUID()
+    );
 
   const [messages, setMessages] =
-    useState<ChatMessage[]>(() => {
-      const stored =
-        getStoredConversations();
+    useState<ChatMessage[]>([]);
+
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  useEffect(() => {
+    const loadStoredConversations = () => {
+      const stored = getStoredConversations();
 
       if (stored.length === 0) {
-        return [];
+        return;
       }
 
       const sorted = [...stored].sort(
         (a, b) =>
-          new Date(
-            b.updatedAt
-          ).getTime() -
-          new Date(
-            a.updatedAt
-          ).getTime()
+          new Date(b.updatedAt).getTime() -
+          new Date(a.updatedAt).getTime()
       );
 
-      return sorted[0].messages;
-    });
+      const latestConversation = sorted[0];
 
-  const [isLoading, setIsLoading] =
-    useState(false);
+      setConversations(stored);
+      setConversationId(latestConversation.id);
+      setMessages(latestConversation.messages);
+    };
+
+    const timer = window.setTimeout(
+      loadStoredConversations,
+      0
+    );
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // Current AI request controller
   const abortControllerRef =
@@ -1163,11 +1212,8 @@ export const ChatProvider = ({
   ) => {
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
-
       role: "user",
-
       content,
-
       createdAt: new Date(),
     };
 
@@ -1176,48 +1222,26 @@ export const ChatProvider = ({
       userMessage,
     ];
 
-    setMessages(
-      conversationMessages
-    );
+    setMessages(conversationMessages);
+    updateConversation(conversationMessages);
 
-    updateConversation(
-      conversationMessages
-    );
+    const controller = new AbortController();
 
-    // Create controller for this request
-    const controller =
-      new AbortController();
-
-    abortControllerRef.current =
-      controller;
-
+    abortControllerRef.current = controller;
     setIsLoading(true);
 
     try {
-      const stream =
-        await sendMessageToAI(
-          conversationMessages,
-          controller.signal
-        );
+      const stream = await sendMessageToAI(
+        conversationMessages,
+        controller.signal
+      );
 
-      const reader =
-        stream.getReader();
-
-      const decoder =
-        new TextDecoder();
-
-      const aiMessageId =
-        crypto.randomUUID();
-
-      let aiContent = "";
+      const aiMessageId = crypto.randomUUID();
 
       const aiMessage: ChatMessage = {
         id: aiMessageId,
-
         role: "assistant",
-
         content: "",
-
         createdAt: new Date(),
       };
 
@@ -1226,80 +1250,33 @@ export const ChatProvider = ({
         aiMessage,
       ]);
 
-      while (true) {
-        const {
-          value,
-          done,
-        } = await reader.read();
+      await streamAIResponse({
+        stream,
 
-        if (done) break;
+        onUpdate: (content) => {
+          setMessages((prev) => {
+            const updated = prev.map(
+              (message) =>
+                message.id === aiMessageId
+                  ? {
+                    ...message,
+                    content,
+                  }
+                  : message
+            );
 
-        const chunk =
-          decoder.decode(value, {
-            stream: true,
+            updateConversation(updated);
+
+            return updated;
           });
-
-        aiContent += chunk;
-
-        setMessages((prev) => {
-          const updated =
-            prev.map(
-              (message) =>
-                message.id ===
-                  aiMessageId
-                  ? {
-                    ...message,
-                    content:
-                      aiContent,
-                  }
-                  : message
-            );
-
-          updateConversation(
-            updated
-          );
-
-          return updated;
-        });
-      }
-
-      // Flush remaining decoder content
-      const finalChunk =
-        decoder.decode();
-
-      if (finalChunk) {
-        aiContent += finalChunk;
-
-        setMessages((prev) => {
-          const updated =
-            prev.map(
-              (message) =>
-                message.id ===
-                  aiMessageId
-                  ? {
-                    ...message,
-                    content:
-                      aiContent,
-                  }
-                  : message
-            );
-
-          updateConversation(
-            updated
-          );
-
-          return updated;
-        });
-      }
+        },
+      });
     } catch (error) {
-      // Abort is expected when user clicks Stop
       if (
         error instanceof DOMException &&
         error.name === "AbortError"
       ) {
-        console.log(
-          "AI generation stopped"
-        );
+        console.log("AI generation stopped");
       } else {
         console.error(
           "Failed to send message:",
@@ -1307,9 +1284,7 @@ export const ChatProvider = ({
         );
       }
     } finally {
-      abortControllerRef.current =
-        null;
-
+      abortControllerRef.current = null;
       setIsLoading(false);
     }
   };
@@ -1419,18 +1394,8 @@ export const ChatProvider = ({
         true
       );
 
-      const reader =
-        stream.getReader();
+      const aiMessageId = crypto.randomUUID();
 
-      const decoder =
-        new TextDecoder();
-
-      const aiMessageId =
-        crypto.randomUUID();
-
-      let aiContent = "";
-
-      // Empty AI message
       const aiMessage: ChatMessage = {
         id: aiMessageId,
         role: "assistant",
@@ -1443,69 +1408,25 @@ export const ChatProvider = ({
         aiMessage,
       ]);
 
-      // Stream response
-      while (true) {
-        const {
-          value,
-          done,
-        } = await reader.read();
+      await streamAIResponse({
+        stream,
 
-        if (done) {
-          break;
-        }
+        onUpdate: (content) => {
+          setMessages((prev) => {
+            const updated = [
+              ...conversationMessages,
+              {
+                ...aiMessage,
+                content,
+              },
+            ];
 
-        const chunk =
-          decoder.decode(value, {
-            stream: true,
+            updateConversation(updated);
+
+            return updated;
           });
-
-        if (!chunk) {
-          continue;
-        }
-
-        aiContent += chunk;
-
-        const updatedMessages = [
-          ...conversationMessages,
-          {
-            ...aiMessage,
-            content: aiContent,
-          },
-        ];
-
-        setMessages(
-          updatedMessages
-        );
-
-        updateConversation(
-          updatedMessages
-        );
-      }
-
-      // Remaining decoder content
-      const finalChunk =
-        decoder.decode();
-
-      if (finalChunk) {
-        aiContent += finalChunk;
-      }
-
-      // Final save
-      const finalAIMessage: ChatMessage = {
-        ...aiMessage,
-        content: aiContent,
-      };
-
-      const finalMessages = [
-        ...conversationMessages,
-        finalAIMessage,
-      ];
-
-      setMessages(finalMessages);
-
-      updateConversation(
-        finalMessages
-      );
+        },
+      });
 
       console.log(
         "Regeneration completed"
@@ -1583,13 +1504,7 @@ export const ChatProvider = ({
         controller.signal
       );
 
-      const reader = stream.getReader();
-
-      const decoder = new TextDecoder();
-
       const aiMessageId = crypto.randomUUID();
-
-      let aiContent = "";
 
       const aiMessage: ChatMessage = {
         id: aiMessageId,
@@ -1603,56 +1518,25 @@ export const ChatProvider = ({
         aiMessage,
       ]);
 
-      while (true) {
-        const {
-          value,
-          done,
-        } = await reader.read();
+      await streamAIResponse({
+        stream,
 
-        if (done) break;
+        onUpdate: (content) => {
+          setMessages((prev) => {
+            const updated = [
+              ...conversationMessages,
+              {
+                ...aiMessage,
+                content,
+              },
+            ];
 
-        const chunk = decoder.decode(value, {
-          stream: true,
-        });
+            updateConversation(updated);
 
-        if (!chunk) continue;
-
-        aiContent += chunk;
-
-        const updatedMessages = [
-          ...conversationMessages,
-          {
-            ...aiMessage,
-            content: aiContent,
-          },
-        ];
-
-        setMessages(updatedMessages);
-
-        updateConversation(
-          updatedMessages
-        );
-      }
-
-      const finalChunk = decoder.decode();
-
-      if (finalChunk) {
-        aiContent += finalChunk;
-      }
-
-      const finalAIMessage: ChatMessage = {
-        ...aiMessage,
-        content: aiContent,
-      };
-
-      const finalMessages = [
-        ...conversationMessages,
-        finalAIMessage,
-      ];
-
-      setMessages(finalMessages);
-
-      updateConversation(finalMessages);
+            return updated;
+          });
+        },
+      });
     } catch (error) {
       if (
         error instanceof DOMException &&
