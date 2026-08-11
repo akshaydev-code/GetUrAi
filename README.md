@@ -142,7 +142,7 @@ Create a .env.local file in the root directory.
 Example:
 
 ```env
-OPENAI_API_KEY=your_api_key_here
+GROQ_API_KEY=your_api_key_here
 ```
 
 # 📜 Available Scripts
