@@ -4,6 +4,8 @@ import { Moon, Sun } from "lucide-react";
 
 import { useTheme } from "@/hooks/useTheme";
 import { APP_NAME } from "@/lib/constants";
+import Image from "next/image";
+import Logo from "../../../public/Logo.png";
 
 
 const Header = () => {
@@ -28,11 +30,20 @@ const Header = () => {
         bg-background
       "
     >
+      <div className="flex items-center gap-4">
+        <Image
+          src={Logo}
+          alt="Logo"
+          width={52}
+          height={52}
+          className="rounded-full"
+        />
 
 
-      <h1 className="text-xl font-semibold">
-        {APP_NAME}
-      </h1>
+        <h1 className="text-xl font-semibold">
+          {APP_NAME}
+        </h1>
+      </div>
 
 
 
